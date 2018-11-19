@@ -5,20 +5,29 @@ import getopt
 import sys
 import xml.etree.ElementTree as ET
 import shutil
-
+import requests
 import logging  # 引入logging模块
+
 logging.basicConfig(level=logging.INFO)  # 设置日志级别
 
 VERBOSE = False
 NAMESPACE = "http://maven.apache.org/POM/4.0.0"
 NAMESPACE_MAP = {"project": NAMESPACE}
 SNAPSHOT_SUFFIX = "-SNAPSHOT"
-ARTIFACTORY_URL = "http://artifactory.intra.xiaojukeji.com"
+ARTIFACTORY_URL = "http://xxxx/api"
+ARTIFACTORY_WEB_URL = "http:///xxxxxxx/artifactory/libs-release-local"
+
+TOKEN = "TOKNE#####"
+APIKEY = "APILKY####"
+HEADERS = {"token": TOKEN, "apikey": APIKEY}
 
 
 def usage():
-    print('''
+    print(''' Usage:
     this is help message: until now this function can only handle pom 4.0.0
+    !!!This script can not handle cases that version info inherited from parent pom !!!
+    !!!This script can not handle cases that version info inherited from parent pom !!!
+    !!!This script can not handle cases that version info inherited from parent pom !!!
     -h --help show help info
     -i --input the input file or directory
     -a --action
@@ -27,7 +36,28 @@ def usage():
     pass
 
 
-def gen_req_url(groupid, artifactid, version):
+def test_if_has_release_in_artifactory(groupid, artifactid, version):
+    payload = {
+        "groupId": groupid,
+        "artifactId": artifactid,
+        "version": version
+    }
+    resp = requests.post(ARTIFACTORY_URL, data=payload, headers=HEADERS)
+    ret_dict = eval(resp)
+    return 1 == ret_dict.get("range", {}).get("total", 0)
+    pass
+
+
+def test_if_has_release_in_artifactory_by_web(groupid, artifactid, version):
+    payload = {
+        "groupId": groupid.replace(".", "/"),
+        "artifactId": artifactid,
+        "version": version
+    }
+    url = "/".join([ARTIFACTORY_WEB_URL, groupid.replace(".", "/"), artifactid, version])
+    resp = requests.get(url)
+    print ("test package", url, resp.status_code)
+    return resp.status_code == requests.codes.ok
     pass
 
 
@@ -36,7 +66,11 @@ def get_pom_module_version(inputfile):
     version = root.find("./project:version", NAMESPACE_MAP).text
     groupid = root.find("./project:groupId", NAMESPACE_MAP).text
     artifactid = root.find("./project:artifactId", NAMESPACE_MAP).text
-    return {"version": version, "artifactId": artifactid, "groupId": groupid}
+    packing_filed = root.find("./project:packaging", NAMESPACE_MAP)
+    packing = "jar"
+    if packing_filed is not None:
+        packing = packing_filed.text
+    return {"version": version, "artifactId": artifactid, "groupId": groupid, "packing": packing}
     pass
 
 
@@ -47,7 +81,7 @@ def remove_snapshot_pom_module_version(inputfiles=[]):
         if version.endswith(SNAPSHOT_SUFFIX):
             new_version = version[0:version.rfind(SNAPSHOT_SUFFIX)]
             root.find("./project:version", NAMESPACE_MAP).text = new_version
-            #logging.info("rewrite file{} version from {} to {}", inputfile, version, new_version)
+            # logging.info("rewrite file{} version from {} to {}", inputfile, version, new_version)
             root.write(inputfile, default_namespace=NAMESPACE)
     pass
 
@@ -76,17 +110,20 @@ def do_restore_files(inputfiles=[], suffix=".bak"):
 
 def test_if_has_release(file_info={}):
     version = file_info.get("version")
-    version = version[0:version.rfind('-SNAPSHOT')]
-    artifactId  = file_info.get("artifactId")
+    version = version[0:version.rfind(SNAPSHOT_SUFFIX)]
+    artifactId = file_info.get("artifactId")
     groupId = file_info.get("groupId")
     request_url = ARTIFACTORY_URL \
                   + groupId.replace(".", "/") \
                   + '/' + artifactId + "/" \
                   + version
-    # TODO : request if it has been released
-    if VERBOSE:
-        print request_url
-    return False
+    try :
+        # return test_if_has_release_in_artifactory(groupId, artifactId, version)
+        return test_if_has_release_in_artifactory_by_web(groupId, artifactId, version)
+    except Exception as e:
+        print "failed to get release info for file "
+        return True
+    return True
     pass
 
 
@@ -102,7 +139,8 @@ def get_file_who_is_snapshot(file_info_map={}):
 def get_file_who_has_no_release(files_with_snapshots=[], file_info_map={}):
     res = []
     for file_name in files_with_snapshots:
-        if file_name not in file_info_map: continue
+        if file_name not in file_info_map:
+            continue
         file_info = file_info_map.get(file_name)
         if not test_if_has_release(file_info):
             res.append(file_name)
@@ -110,7 +148,7 @@ def get_file_who_has_no_release(files_with_snapshots=[], file_info_map={}):
     pass
 
 
-def check_and_rename(inputfiles= []):
+def check_and_rename(inputfiles=[]):
     # 1. get versions
     file_info_map = get_pom_module_versions(inputfiles)
     # logging.info("file_info_map {}", file_info_map)
@@ -133,6 +171,7 @@ def check_and_rename(inputfiles= []):
 def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hi:a:v", ["help", "input=", "action=", "verbose"])
+        print opts, args
     except getopt.GetoptError as err:
         print(err)
         usage()
@@ -153,6 +192,11 @@ def main():
             action = a
         else:
             usage()
+    for file_arg in args:
+        inputfiles += file_arg.split(",")
+    if inputfiles is not None and len(inputfiles) == 0:
+        usage()
+        return
     check_and_rename(inputfiles)
     # print(inputfiles, action, VERBOSE)
     # print(get_pom_module_versions(inputfiles))
