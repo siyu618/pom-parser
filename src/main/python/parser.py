@@ -94,7 +94,7 @@ def remove_snapshot_pom_module_version(inputfiles=[], file_info_map={}):
                 new_version = version[0:version.rfind(SNAPSHOT_SUFFIX)]
                 root.find("./project:version", NAMESPACE_MAP).text = new_version
                 # logging.info("rewrite file{} version from {} to {}", inputfile, version, new_version)
-                root.write(inputfile, encoding=ENCODING, default_namespace=NAMESPACE)
+                root.write(inputfile, xml_declaration=True, encoding=ENCODING, default_namespace=NAMESPACE)
         else:
             parent_filed = root.find("./project:parent", NAMESPACE_MAP)
             parent_version_field = parent_filed.find("./project:version", NAMESPACE_MAP)
@@ -104,7 +104,7 @@ def remove_snapshot_pom_module_version(inputfiles=[], file_info_map={}):
                 version_element = ET.SubElement(root.getroot(), '{' + NAMESPACE + '}version')
                 version_element.text = new_version
                 print "after :", root.find("./project:version", NAMESPACE_MAP).text
-                root.write(inputfile + '.new', encoding=ENCODING, default_namespace=NAMESPACE)
+                root.write(inputfile, xml_declaration=True, encoding=ENCODING, default_namespace=NAMESPACE)
     pass
 
 
